@@ -196,6 +196,27 @@
             height: 100%;
             border: none;
         }
+
+        /* Fullscreen notification */
+        .fullscreen-overlay {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 9999;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .fullscreen-overlay.show {
+            display: block;
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -250,6 +271,11 @@
         <iframe id="plex-iframe" class="plex-iframe" src="" allowfullscreen></iframe>
     </div>
 
+    <!-- Fullscreen notification -->
+    <div class="fullscreen-overlay" id="fullscreen-overlay">
+        Press F11 or ESC to toggle fullscreen
+    </div>
+
     <!-- Wails Runtime -->
     <script src="./wailsjs/runtime.js"></script>
     
@@ -264,6 +290,7 @@
         
         // Aktuelle Konfiguration
         let config = { ...DEFAULT_CONFIG };
+        let isFullscreenMode = false;
         
         // DOM Elemente
         const elements = {
@@ -280,13 +307,13 @@
             timeout: document.getElementById('timeout'),
             launcherContainer: document.getElementById('launcher-container'),
             plexContainer: document.getElementById('plex-container'),
-            plexIframe: document.getElementById('plex-iframe')
+            plexIframe: document.getElementById('plex-iframe'),
+            fullscreenOverlay: document.getElementById('fullscreen-overlay')
         };
         
         // Status Management
         let connectionAttempts = 0;
         let isOnline = navigator.onLine;
-        let wailsFullscreenState = false;
         
         // Wails API Import
         let WailsApp = null;
@@ -297,156 +324,198 @@
                 const { SetFullscreen, IsFullscreen, ToggleFullscreen } = await import('./wailsjs/go/main/App.js');
                 WailsApp = { SetFullscreen, IsFullscreen, ToggleFullscreen };
                 console.log('Wails API loaded successfully');
-                
-                // Start fullscreen state monitoring
-                monitorFullscreenState();
             } catch (error) {
-                console.warn('Wails API not available:', error);
+                console.warn('Wails API not available (running in browser):', error);
             }
         }
         
         // Fullscreen functions
-        async function enterFullscreen() {
-            if (WailsApp && WailsApp.SetFullscreen) {
+        async function setFullscreen(enabled) {
+            if (WailsApp?.SetFullscreen) {
                 try {
-                    await WailsApp.SetFullscreen(true);
-                    console.log('Wails fullscreen enabled');
+                    await WailsApp.SetFullscreen(enabled);
+                    isFullscreenMode = enabled;
+                    console.log(`Wails fullscreen ${enabled ? 'enabled' : 'disabled'}`);
+                    showFullscreenNotification();
+                    
+                    // Notify iframe about fullscreen state
+                    notifyIframeFullscreen(enabled);
+                    return true;
                 } catch (error) {
                     console.error('Error setting fullscreen:', error);
                 }
             } else {
-                // Fallback für native fullscreen
-                if (document.documentElement.requestFullscreen) {
-                    document.documentElement.requestFullscreen();
-                }
-            }
-        }
-
-        async function exitFullscreen() {
-            if (WailsApp && WailsApp.SetFullscreen) {
+                // Fallback for browser fullscreen
                 try {
-                    await WailsApp.SetFullscreen(false);
-                    console.log('Wails fullscreen disabled');
+                    if (enabled) {
+                        await document.documentElement.requestFullscreen();
+                    } else {
+                        await document.exitFullscreen();
+                    }
+                    isFullscreenMode = enabled;
+                    showFullscreenNotification();
+                    notifyIframeFullscreen(enabled);
+                    return true;
                 } catch (error) {
-                    console.error('Error exiting fullscreen:', error);
-                }
-            } else {
-                // Fallback für native fullscreen
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
+                    console.error('Browser fullscreen error:', error);
                 }
             }
+            return false;
         }
 
         async function toggleFullscreen() {
-            if (WailsApp && WailsApp.ToggleFullscreen) {
+            const newState = !isFullscreenMode;
+            return await setFullscreen(newState);
+        }
+
+        // Show fullscreen notification
+        function showFullscreenNotification() {
+            const overlay = elements.fullscreenOverlay;
+            overlay.classList.add('show');
+            setTimeout(() => {
+                overlay.classList.remove('show');
+            }, 2000);
+        }
+
+        // Notify iframe about fullscreen state
+        function notifyIframeFullscreen(isFullscreen) {
+            const iframe = elements.plexIframe;
+            if (iframe?.contentWindow) {
                 try {
-                    await WailsApp.ToggleFullscreen();
-                    console.log('Wails fullscreen toggled');
+                    iframe.contentWindow.postMessage({
+                        type: 'fullscreenStateChange',
+                        isFullscreen: isFullscreen
+                    }, '*');
                 } catch (error) {
-                    console.error('Error toggling fullscreen:', error);
+                    console.warn('Could not notify iframe:', error);
                 }
             }
         }
 
-        // Monitor fullscreen state
-        async function monitorFullscreenState() {
-            if (!WailsApp || !WailsApp.IsFullscreen) return;
-            
-            try {
-                const isFullscreen = await WailsApp.IsFullscreen();
-                if (isFullscreen !== wailsFullscreenState) {
-                    wailsFullscreenState = isFullscreen;
-                    
-                    // Dispatch fullscreen events
-                    const event = new Event('fullscreenchange');
-                    document.dispatchEvent(event);
-                    
-                    // Notify iframe if it exists
-                    const iframe = elements.plexIframe;
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage({
-                            type: 'fullscreenchange',
-                            fullscreen: isFullscreen
-                        }, '*');
-                    }
-                }
-            } catch (error) {
-                console.error('Error checking fullscreen state:', error);
-            }
-            
-            // Continue monitoring
-            setTimeout(monitorFullscreenState, 100);
-        }
-
-        // Fullscreen event handlers für iframe
-        function setupFullscreenHandlers() {
+        // Setup iframe fullscreen integration
+        function setupIframeFullscreen() {
             const iframe = elements.plexIframe;
             
-            // Listen for messages from iframe
-            window.addEventListener('message', function(event) {
-                // Check if message is from our Plex server
+            // Listen for fullscreen requests from Plex
+            window.addEventListener('message', async function(event) {
+                // Verify origin if possible
                 try {
                     const plexOrigin = new URL(config.serverUrl).origin;
-                    if (event.origin !== plexOrigin) return;
+                    if (event.origin !== plexOrigin && event.origin !== 'null') {
+                        return;
+                    }
                 } catch (e) {
-                    return;
+                    // Continue if URL parsing fails
                 }
                 
-                if (event.data && event.data.type === 'fullscreen') {
-                    if (event.data.enabled) {
-                        enterFullscreen();
-                    } else {
-                        exitFullscreen();
-                    }
+                if (event.data?.type === 'requestFullscreen') {
+                    console.log('Received fullscreen request from Plex');
+                    await setFullscreen(event.data.enabled);
                 }
             });
 
-            // Setup iframe fullscreen integration
+            // Inject fullscreen handling into iframe
             iframe.onload = function() {
-                console.log('Plex iframe loaded, setting up fullscreen integration');
+                console.log('Plex loaded, injecting fullscreen handler');
                 
-                // Try to inject fullscreen handling script
                 try {
                     const script = `
                         (function() {
-                            console.log('Injecting Plex fullscreen handler');
+                            console.log('Plex fullscreen integration starting...');
                             
-                            let isWailsFullscreen = false;
+                            let mockFullscreenElement = null;
                             
-                            // Override Element.requestFullscreen
-                            const originalRequestFullscreen = Element.prototype.requestFullscreen;
-                            Element.prototype.requestFullscreen = function() {
-                                console.log('Plex requested fullscreen - redirecting to Wails');
-                                parent.postMessage({type: 'fullscreen', enabled: true}, '*');
-                                isWailsFullscreen = true;
-                                
-                                // Dispatch fullscreen events
-                                const event = new Event('fullscreenchange');
-                                document.dispatchEvent(event);
-                                
-                                return Promise.resolve();
-                            };
+                            // Override requestFullscreen
+                            const originalRequestFullscreen = Element.prototype.requestFullscreen ||
+                                                           Element.prototype.webkitRequestFullscreen ||
+                                                           Element.prototype.mozRequestFullScreen ||
+                                                           Element.prototype.msRequestFullscreen;
                             
-                            // Override Document.exitFullscreen
-                            const originalExitFullscreen = Document.prototype.exitFullscreen;
-                            Document.prototype.exitFullscreen = function() {
-                                console.log('Plex requested exit fullscreen - redirecting to Wails');
-                                parent.postMessage({type: 'fullscreen', enabled: false}, '*');
-                                isWailsFullscreen = false;
-                                
-                                // Dispatch fullscreen events
-                                const event = new Event('fullscreenchange');
-                                document.dispatchEvent(event);
-                                
-                                return Promise.resolve();
-                            };
+                            function overrideRequestFullscreen(element, method) {
+                                if (!element[method]) return;
+                                element[method] = function(options) {
+                                    console.log('Plex requested fullscreen - redirecting to Wails');
+                                    mockFullscreenElement = this;
+                                    
+                                    // Send message to parent
+                                    try {
+                                        parent.postMessage({
+                                            type: 'requestFullscreen',
+                                            enabled: true
+                                        }, '*');
+                                    } catch (e) {
+                                        console.error('Failed to send fullscreen message:', e);
+                                    }
+                                    
+                                    // Dispatch fullscreen events
+                                    setTimeout(() => {
+                                        const event = new Event('fullscreenchange');
+                                        document.dispatchEvent(event);
+                                    }, 100);
+                                    
+                                    return Promise.resolve();
+                                };
+                            }
+                            
+                            // Override all fullscreen methods
+                            overrideRequestFullscreen(Element.prototype, 'requestFullscreen');
+                            overrideRequestFullscreen(Element.prototype, 'webkitRequestFullscreen');
+                            overrideRequestFullscreen(Element.prototype, 'mozRequestFullScreen');
+                            overrideRequestFullscreen(Element.prototype, 'msRequestFullscreen');
+                            
+                            // Override exitFullscreen
+                            const originalExitFullscreen = document.exitFullscreen ||
+                                                         document.webkitExitFullscreen ||
+                                                         document.mozCancelFullScreen ||
+                                                         document.msExitFullscreen;
+                            
+                            function overrideExitFullscreen(obj, method) {
+                                if (!obj[method]) return;
+                                obj[method] = function() {
+                                    console.log('Plex requested exit fullscreen - redirecting to Wails');
+                                    mockFullscreenElement = null;
+                                    
+                                    try {
+                                        parent.postMessage({
+                                            type: 'requestFullscreen',
+                                            enabled: false
+                                        }, '*');
+                                    } catch (e) {
+                                        console.error('Failed to send exit fullscreen message:', e);
+                                    }
+                                    
+                                    setTimeout(() => {
+                                        const event = new Event('fullscreenchange');
+                                        document.dispatchEvent(event);
+                                    }, 100);
+                                    
+                                    return Promise.resolve();
+                                };
+                            }
+                            
+                            overrideExitFullscreen(document, 'exitFullscreen');
+                            overrideExitFullscreen(document, 'webkitExitFullscreen');
+                            overrideExitFullscreen(document, 'mozCancelFullScreen');
+                            overrideExitFullscreen(document, 'msExitFullscreen');
                             
                             // Override fullscreen properties
                             Object.defineProperty(document, 'fullscreenElement', {
-                                get: function() { 
-                                    return isWailsFullscreen ? document.body : null; 
-                                },
+                                get: function() { return mockFullscreenElement; },
+                                configurable: true
+                            });
+                            
+                            Object.defineProperty(document, 'webkitFullscreenElement', {
+                                get: function() { return mockFullscreenElement; },
+                                configurable: true
+                            });
+                            
+                            Object.defineProperty(document, 'mozFullScreenElement', {
+                                get: function() { return mockFullscreenElement; },
+                                configurable: true
+                            });
+                            
+                            Object.defineProperty(document, 'msFullscreenElement', {
+                                get: function() { return mockFullscreenElement; },
                                 configurable: true
                             });
                             
@@ -455,45 +524,52 @@
                                 configurable: true
                             });
                             
-                            // Listen for messages from parent (fullscreen state changes)
-                            window.addEventListener('message', function(e) {
-                                if (e.data && e.data.type === 'fullscreenchange') {
-                                    isWailsFullscreen = e.data.fullscreen;
-                                    const event = new Event('fullscreenchange');
-                                    document.dispatchEvent(event);
+                            // Listen for fullscreen state changes from parent
+                            window.addEventListener('message', function(event) {
+                                if (event.data?.type === 'fullscreenStateChange') {
+                                    if (event.data.isFullscreen) {
+                                        mockFullscreenElement = document.body;
+                                    } else {
+                                        mockFullscreenElement = null;
+                                    }
+                                    
+                                    const fsEvent = new Event('fullscreenchange');
+                                    document.dispatchEvent(fsEvent);
                                 }
                             });
                             
-                            // ESC key handler
-                            document.addEventListener('keydown', function(e) {
-                                if (e.key === 'Escape' && isWailsFullscreen) {
-                                    document.exitFullscreen();
-                                }
-                            });
-                            
-                            console.log('Plex fullscreen integration loaded');
+                            console.log('Plex fullscreen integration complete');
                         })();
                     `;
                     
-                    // Try to execute the script in iframe context
+                    // Execute script in iframe context
                     if (iframe.contentWindow) {
                         iframe.contentWindow.eval(script);
                     }
-                } catch (e) {
-                    console.warn('Could not inject fullscreen script (likely CORS):', e);
-                    console.log('Fullscreen will still work via keyboard shortcuts');
+                } catch (error) {
+                    console.warn('Could not inject fullscreen script (CORS limitation):', error);
+                    console.log('Fullscreen will work via F11/ESC keyboard shortcuts');
                 }
             };
         }
         
         // Global keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
+        document.addEventListener('keydown', async function(e) {
             if (e.key === 'F11') {
                 e.preventDefault();
-                toggleFullscreen();
-            } else if (e.key === 'Escape') {
+                await toggleFullscreen();
+            } else if (e.key === 'Escape' && isFullscreenMode) {
                 e.preventDefault();
-                exitFullscreen();
+                await setFullscreen(false);
+            }
+        });
+
+        // Handle browser fullscreen changes
+        document.addEventListener('fullscreenchange', function() {
+            const browserIsFullscreen = !!document.fullscreenElement;
+            if (browserIsFullscreen !== isFullscreenMode && !WailsApp) {
+                isFullscreenMode = browserIsFullscreen;
+                notifyIframeFullscreen(isFullscreenMode);
             }
         });
         
@@ -512,53 +588,60 @@
             showManualOptions();
         });
         
-        // Einstellungen laden
+        // Load settings
         function loadSettings() {
-            const saved = localStorage.getItem('plexWrapperSettings');
-            if (saved) {
-                try {
+            try {
+                const saved = localStorage.getItem('plexWrapperSettings');
+                if (saved) {
                     const savedConfig = JSON.parse(saved);
                     config = { ...DEFAULT_CONFIG, ...savedConfig };
-                } catch (e) {
-                    console.warn('Could not load saved settings:', e);
                 }
+            } catch (e) {
+                console.warn('Could not load saved settings:', e);
             }
             
-            // UI aktualisieren
+            // Update UI
             elements.serverUrl.value = config.serverUrl;
             elements.retryDelay.value = config.retryDelay;
             elements.timeout.value = config.timeout;
         }
         
-        // Einstellungen speichern
+        // Save settings
         function saveSettings() {
             config.serverUrl = elements.serverUrl.value.trim();
             config.retryDelay = parseInt(elements.retryDelay.value);
             config.timeout = parseInt(elements.timeout.value);
             
-            // Validierung
             if (!isValidUrl(config.serverUrl)) {
                 updateStatus('Invalid server URL', 'error');
                 return;
             }
             
-            localStorage.setItem('plexWrapperSettings', JSON.stringify(config));
-            elements.settingsPanel.style.display = 'none';
+            try {
+                localStorage.setItem('plexWrapperSettings', JSON.stringify(config));
+            } catch (e) {
+                console.warn('Could not save settings:', e);
+            }
             
+            elements.settingsPanel.style.display = 'none';
             updateStatus('Settings saved! Connecting...', 'checking');
             connectionAttempts = 0;
             attemptConnection();
         }
         
-        // Einstellungen zurücksetzen
+        // Reset settings
         function resetSettings() {
             config = { ...DEFAULT_CONFIG };
-            localStorage.removeItem('plexWrapperSettings');
+            try {
+                localStorage.removeItem('plexWrapperSettings');
+            } catch (e) {
+                console.warn('Could not clear settings:', e);
+            }
             loadSettings();
             updateStatus('Settings reset to default', 'success');
         }
         
-        // URL Validierung
+        // URL validation
         function isValidUrl(string) {
             try {
                 const url = new URL(string);
@@ -568,7 +651,7 @@
             }
         }
         
-        // Server-Erreichbarkeit prüfen
+        // Check server reachability
         async function checkServerReachability(url) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), config.timeout * 1000);
@@ -588,7 +671,7 @@
             }
         }
         
-        // Status aktualisieren
+        // Update status
         function updateStatus(message, type = 'checking') {
             elements.statusText.textContent = message;
             elements.connectionStatus.className = `connection-status status-${type}`;
@@ -596,7 +679,7 @@
             elements.connectionStatus.style.display = 'block';
         }
         
-        // Zu Plex verbinden
+        // Connect to Plex
         async function connectToPlex() {
             if (!isOnline) {
                 updateStatus('No internet connection', 'error');
@@ -611,14 +694,13 @@
                 const isReachable = await checkServerReachability(config.serverUrl);
                 
                 if (isReachable || connectionAttempts === 0) {
-                    // Load Plex in iframe
                     updateStatus('Server found! Loading Plex...', 'success');
                     
                     setTimeout(() => {
                         elements.launcherContainer.style.display = 'none';
                         elements.plexContainer.style.display = 'block';
                         elements.plexIframe.src = config.serverUrl + '/web/index.html';
-                        setupFullscreenHandlers();
+                        setupIframeFullscreen();
                     }, 1000);
                     
                 } else {
@@ -638,7 +720,7 @@
             }
         }
         
-        // Manuelle Optionen anzeigen
+        // Show manual options
         function showManualOptions() {
             elements.spinner.style.display = 'none';
             elements.mainButtons.style.display = 'flex';
@@ -649,7 +731,7 @@
             elements.manual.classList.add('fade-in');
         }
         
-        // Einstellungen Panel toggle
+        // Toggle settings panel
         function toggleSettings() {
             const panel = elements.settingsPanel;
             panel.style.display = panel.style.display === 'none' || !panel.style.display ? 'block' : 'none';
@@ -659,7 +741,7 @@
             }
         }
         
-        // Verbindungsversuch starten
+        // Attempt connection
         function attemptConnection() {
             if (!isValidUrl(config.serverUrl)) {
                 updateStatus('Please configure your server URL', 'error');
@@ -680,12 +762,9 @@
         document.addEventListener('DOMContentLoaded', async function() {
             console.log('DOM loaded, initializing...');
             
-            // Initialize Wails first
             await initWails();
-            
             loadSettings();
             
-            // Offline-Status prüfen
             if (!isOnline) {
                 elements.offlineIndicator.style.display = 'block';
                 updateStatus('You are offline', 'error');
@@ -693,7 +772,6 @@
                 return;
             }
             
-            // Automatische Verbindung nach kurzer Verzögerung
             setTimeout(() => {
                 attemptConnection();
             }, config.retryDelay * 1000);
