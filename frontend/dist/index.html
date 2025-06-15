@@ -179,10 +179,27 @@
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        /* Plex iframe container */
+        .plex-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1000;
+        }
+
+        .plex-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="launcher-container">
         <div class="logo">PLEX</div>
         
         <div class="offline-indicator" id="offline-indicator">
@@ -228,6 +245,11 @@
         </div>
     </div>
 
+    <!-- Plex iframe container -->
+    <div class="plex-container" id="plex-container">
+        <iframe id="plex-iframe" class="plex-iframe" src="" allowfullscreen></iframe>
+    </div>
+
     <script>
         // Standard Konfiguration - HIER DEINE URL EINTRAGEN:
         const DEFAULT_CONFIG = {
@@ -252,12 +274,103 @@
             offlineIndicator: document.getElementById('offline-indicator'),
             serverUrl: document.getElementById('server-url'),
             retryDelay: document.getElementById('retry-delay'),
-            timeout: document.getElementById('timeout')
+            timeout: document.getElementById('timeout'),
+            launcherContainer: document.getElementById('launcher-container'),
+            plexContainer: document.getElementById('plex-container'),
+            plexIframe: document.getElementById('plex-iframe')
         };
         
         // Status Management
         let connectionAttempts = 0;
         let isOnline = navigator.onLine;
+        
+        // Wails fullscreen functions (falls verfügbar)
+        function enterFullscreen() {
+            if (window.go && window.go.main && window.go.main.App && window.go.main.App.SetFullscreen) {
+                window.go.main.App.SetFullscreen(true);
+            } else {
+                // Fallback für native fullscreen
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                }
+            }
+        }
+
+        function exitFullscreen() {
+            if (window.go && window.go.main && window.go.main.App && window.go.main.App.SetFullscreen) {
+                window.go.main.App.SetFullscreen(false);
+            } else {
+                // Fallback für native fullscreen
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        // Fullscreen event handlers für iframe
+        function setupFullscreenHandlers() {
+            const iframe = elements.plexIframe;
+            
+            // Listen for messages from iframe
+            window.addEventListener('message', function(event) {
+                if (event.origin !== new URL(config.serverUrl).origin) return;
+                
+                if (event.data.type === 'fullscreen') {
+                    if (event.data.enabled) {
+                        enterFullscreen();
+                    } else {
+                        exitFullscreen();
+                    }
+                }
+            });
+
+            // Inject fullscreen handling script into iframe
+            iframe.onload = function() {
+                try {
+                    const script = `
+                        (function() {
+                            let isFullscreen = false;
+                            
+                            // Override fullscreen API
+                            const originalRequestFullscreen = Element.prototype.requestFullscreen;
+                            const originalExitFullscreen = Document.prototype.exitFullscreen;
+                            
+                            Element.prototype.requestFullscreen = function() {
+                                isFullscreen = true;
+                                parent.postMessage({type: 'fullscreen', enabled: true}, '*');
+                                return Promise.resolve();
+                            };
+                            
+                            Document.prototype.exitFullscreen = function() {
+                                isFullscreen = false;
+                                parent.postMessage({type: 'fullscreen', enabled: false}, '*');
+                                return Promise.resolve();
+                            };
+                            
+                            // Override fullscreen properties
+                            Object.defineProperty(document, 'fullscreenElement', {
+                                get: function() { return isFullscreen ? document.body : null; }
+                            });
+                            
+                            Object.defineProperty(document, 'fullscreenEnabled', {
+                                get: function() { return true; }
+                            });
+                            
+                            // Listen for ESC key to exit fullscreen
+                            document.addEventListener('keydown', function(e) {
+                                if (e.key === 'Escape' && isFullscreen) {
+                                    document.exitFullscreen();
+                                }
+                            });
+                        })();
+                    `;
+                    
+                    iframe.contentWindow.eval(script);
+                } catch (e) {
+                    console.warn('Could not inject fullscreen script:', e);
+                }
+            };
+        }
         
         // Online/Offline Detection
         window.addEventListener('online', () => {
@@ -373,15 +486,14 @@
                 const isReachable = await checkServerReachability(config.serverUrl);
                 
                 if (isReachable || connectionAttempts === 0) {
-                    // Redirect zu Plex
-                    updateStatus('Server found! Redirecting...', 'success');
+                    // Load Plex in iframe instead of redirect
+                    updateStatus('Server found! Loading Plex...', 'success');
                     
                     setTimeout(() => {
-                        try {
-                            window.location.href = config.serverUrl;
-                        } catch (error) {
-                            showManualOptions();
-                        }
+                        elements.launcherContainer.style.display = 'none';
+                        elements.plexContainer.style.display = 'block';
+                        elements.plexIframe.src = config.serverUrl + '/web/index.html';
+                        setupFullscreenHandlers();
                     }, 1000);
                     
                 } else {
@@ -432,6 +544,13 @@
             
             connectToPlex();
         }
+
+        // ESC key handler to exit fullscreen
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                exitFullscreen();
+            }
+        });
         
         // Initialization
         document.addEventListener('DOMContentLoaded', function() {
