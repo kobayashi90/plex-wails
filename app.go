@@ -20,12 +20,11 @@ func NewApp() *App {
     return &App{}
 }
 
-// Deine bestehende startup Funktion (umbenennen zu OnStartup)
 func (a *App) OnStartup(ctx context.Context) {
     a.ctx = ctx
 }
 
-// NEUE Fullscreen-Funktionen hinzufügen:
+// Diese Funktionen müssen exportiert sein (großer Anfangsbuchstabe!)
 func (a *App) SetFullscreen(fullscreen bool) {
     if fullscreen {
         runtime.WindowFullscreen(a.ctx)
@@ -48,7 +47,7 @@ func main() {
         AssetServer: &assetserver.Options{
             Assets: assets,
         },
-        OnStartup: app.OnStartup, // Hier geändert von app.startup zu app.OnStartup
+        OnStartup: app.OnStartup,
     })
 
     if err != nil {
