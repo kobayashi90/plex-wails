@@ -217,6 +217,41 @@
             display: block;
             opacity: 1;
         }
+
+        /* Fullscreen control bar */
+        .fullscreen-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 25px;
+            padding: 8px 16px;
+            z-index: 9999;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .fullscreen-controls.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .fullscreen-btn {
+            background: transparent;
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
     </style>
 </head>
 <body>
@@ -276,6 +311,16 @@
         Press F11 or ESC to toggle fullscreen
     </div>
 
+    <!-- Fullscreen controls -->
+    <div class="fullscreen-controls" id="fullscreen-controls">
+        <button class="fullscreen-btn" onclick="toggleFullscreen()" id="fullscreen-toggle-btn">
+            ⛶ Toggle Fullscreen (F11)
+        </button>
+        <button class="fullscreen-btn" onclick="setFullscreen(false)" id="fullscreen-exit-btn">
+            ✕ Exit Fullscreen (ESC)
+        </button>
+    </div>
+
     <!-- Wails Runtime -->
     <script src="./wailsjs/runtime.js"></script>
     
@@ -308,7 +353,8 @@
             launcherContainer: document.getElementById('launcher-container'),
             plexContainer: document.getElementById('plex-container'),
             plexIframe: document.getElementById('plex-iframe'),
-            fullscreenOverlay: document.getElementById('fullscreen-overlay')
+            fullscreenOverlay: document.getElementById('fullscreen-overlay'),
+            fullscreenControls: document.getElementById('fullscreen-controls')
         };
         
         // Status Management
@@ -368,13 +414,35 @@
             return await setFullscreen(newState);
         }
 
-        // Show fullscreen notification
+        // Show fullscreen notification and controls
         function showFullscreenNotification() {
             const overlay = elements.fullscreenOverlay;
+            const controls = elements.fullscreenControls;
+            
             overlay.classList.add('show');
+            controls.classList.add('show');
+            
             setTimeout(() => {
                 overlay.classList.remove('show');
             }, 2000);
+            
+            // Hide controls after 5 seconds
+            setTimeout(() => {
+                controls.classList.remove('show');
+            }, 5000);
+        }
+
+        // Show controls on mouse movement
+        let controlsTimeout;
+        function showControlsTemporarily() {
+            if (isFullscreenMode) {
+                elements.fullscreenControls.classList.add('show');
+                
+                clearTimeout(controlsTimeout);
+                controlsTimeout = setTimeout(() => {
+                    elements.fullscreenControls.classList.remove('show');
+                }, 3000);
+            }
         }
 
         // Notify iframe about fullscreen state
@@ -563,6 +631,9 @@
                 await setFullscreen(false);
             }
         });
+
+        // Mouse movement handler for fullscreen controls
+        document.addEventListener('mousemove', showControlsTemporarily);
 
         // Handle browser fullscreen changes
         document.addEventListener('fullscreenchange', function() {
