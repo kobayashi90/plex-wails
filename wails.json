@@ -2,5 +2,16 @@
   "name": "plex-wrapper",
   "outputfilename": "PlexWrapper",
   "frontend:build": "echo 'Build complete'",
-  "frontend:dev": "echo 'Dev mode'"
+  "frontend:dev": "echo 'Dev mode'",
+  "assetdir": "./frontend/dist",
+  "nsAppTransportSecurity": {
+    "NSAllowsArbitraryLoads": true,
+    "NSExceptionDomains": {
+      "plex.amaterasu.network": {
+        "NSExceptionAllowsInsecureHTTPLoads": true,
+        "NSExceptionMinimumTLSVersion": "1.0",
+        "NSIncludesSubdomains": true
+      }
+    }
+  }
 }
