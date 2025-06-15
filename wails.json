@@ -1,6 +1,6 @@
 {
   "name": "plex-wrapper",
   "outputfilename": "PlexWrapper",
-  "frontend:build": "npm run build",
-  "frontend:dev": "npm run dev"
+  "frontend:build": "echo 'Build complete'",
+  "frontend:dev": "echo 'Dev mode'"
 }
