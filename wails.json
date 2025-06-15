@@ -4,6 +4,7 @@
   "frontend:build": "echo 'Build complete'",
   "frontend:dev": "echo 'Dev mode'",
   "assetdir": "./frontend/dist",
+  "debounceMS": 20,
   "nsAppTransportSecurity": {
     "NSAllowsArbitraryLoads": true,
     "NSExceptionDomains": {
