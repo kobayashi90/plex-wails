@@ -1,0 +1,6 @@
+{
+  "name": "plex-wrapper",
+  "outputfilename": "PlexWrapper",
+  "frontend:build": "npm run build",
+  "frontend:dev": "npm run dev"
+}
