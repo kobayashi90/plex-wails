@@ -30,7 +30,7 @@ func main() {
         Title:  "My Plex Server",
         Width:  1280,
         Height: 720,
-        URL:    "https://DEINE-PLEX-URL.com", // ← HIER ÄNDERN
+        URL:    "https://plex.amaterasu.network", // ← HIER ÄNDERN
         AssetServer: &assetserver.Options{
             Assets: assets,
         },
