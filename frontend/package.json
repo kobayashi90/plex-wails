@@ -2,7 +2,7 @@
   "name": "frontend",
   "version": "1.0.0",
   "scripts": {
-    "build": "echo 'Build complete'",
+    "build": "mkdir -p dist && cp index.html dist/",
     "dev": "echo 'Dev mode'"
   }
 }
