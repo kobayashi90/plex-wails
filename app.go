@@ -63,7 +63,7 @@ func main() {
         OnStartup: app.OnStartup,
         // Ensure the window can go fullscreen
         DisableResize: false,
-        Fullscreen:    false,
+        Fullscreen:    true,
     })
 
     if err != nil {
