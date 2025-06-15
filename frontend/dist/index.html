@@ -1,22 +1,463 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Plex Desktop</title>
     <style>
-        body, html { 
-            margin: 0; 
-            padding: 0; 
-            height: 100%; 
-            overflow: hidden; 
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1f1f1f, #2d2d2d);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
         }
-        iframe { 
-            width: 100%; 
-            height: 100%; 
-            border: none; 
+        
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .logo {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            background: linear-gradient(45deg, #e5a00d, #f1c232);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .status-text {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.8;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left: 4px solid #e5a00d;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 2rem auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .offline-indicator {
+            background: #ff6b6b;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+        
+        .connection-status {
+            margin: 1rem 0;
+            padding: 0.5rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .status-checking { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
+        .status-success { background: rgba(40, 167, 69, 0.2); color: #28a745; }
+        .status-error { background: rgba(220, 53, 69, 0.2); color: #dc3545; }
+        
+        .settings-panel {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            display: none;
+        }
+        
+        .settings-title {
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: #e5a00d;
+        }
+        
+        .input-group {
+            margin-bottom: 1rem;
+            text-align: left;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .input-group input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            color: white;
+            box-sizing: border-box;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .btn {
+            padding: 0.7rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: #e5a00d;
+            color: black;
+            font-weight: bold;
+        }
+        
+        .btn-primary:hover {
+            background: #f1c232;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn-small {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+        }
+        
+        .manual-link {
+            margin-top: 1rem;
+            display: none;
+        }
+        
+        .manual-link a {
+            color: #e5a00d;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        
+        .manual-link a:hover {
+            text-decoration: underline;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
 <body>
-    <iframe src="https://plex.amaterasu.network"></iframe>
+    <div class="container">
+        <div class="logo">PLEX</div>
+        
+        <div class="offline-indicator" id="offline-indicator">
+            ⚠️ You appear to be offline
+        </div>
+        
+        <div class="status-text" id="status-text">Connecting to your server...</div>
+        <div class="spinner" id="spinner"></div>
+        
+        <div class="connection-status" id="connection-status"></div>
+        
+        <div class="button-group" id="main-buttons" style="display: none;">
+            <button class="btn btn-primary" onclick="connectToPlex()">Connect to Plex</button>
+            <button class="btn btn-secondary btn-small" onclick="toggleSettings()">Settings</button>
+        </div>
+        
+        <div class="manual-link" id="manual">
+            <a href="#" id="manual-link">Open Plex in Browser</a>
+        </div>
+        
+        <div class="settings-panel" id="settings-panel">
+            <div class="settings-title">Server Settings</div>
+            
+            <div class="input-group">
+                <label for="server-url">Server URL:</label>
+                <input type="url" id="server-url" placeholder="https://your-server.com" />
+            </div>
+            
+            <div class="input-group">
+                <label for="retry-delay">Connection Delay (seconds):</label>
+                <input type="number" id="retry-delay" min="1" max="10" value="2" />
+            </div>
+            
+            <div class="input-group">
+                <label for="timeout">Connection Timeout (seconds):</label>
+                <input type="number" id="timeout" min="5" max="30" value="10" />
+            </div>
+            
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="saveSettings()">Save & Connect</button>
+                <button class="btn btn-secondary" onclick="resetSettings()">Reset to Default</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Standard Konfiguration - HIER DEINE URL EINTRAGEN:
+        const DEFAULT_CONFIG = {
+            serverUrl: "https://DEINE-PLEX-URL.com",
+            retryDelay: 2,
+            timeout: 10,
+            maxRetries: 3
+        };
+        
+        // Aktuelle Konfiguration
+        let config = { ...DEFAULT_CONFIG };
+        
+        // DOM Elemente
+        const elements = {
+            statusText: document.getElementById('status-text'),
+            spinner: document.getElementById('spinner'),
+            connectionStatus: document.getElementById('connection-status'),
+            mainButtons: document.getElementById('main-buttons'),
+            manual: document.getElementById('manual'),
+            manualLink: document.getElementById('manual-link'),
+            settingsPanel: document.getElementById('settings-panel'),
+            offlineIndicator: document.getElementById('offline-indicator'),
+            serverUrl: document.getElementById('server-url'),
+            retryDelay: document.getElementById('retry-delay'),
+            timeout: document.getElementById('timeout')
+        };
+        
+        // Status Management
+        let connectionAttempts = 0;
+        let isOnline = navigator.onLine;
+        
+        // Online/Offline Detection
+        window.addEventListener('online', () => {
+            isOnline = true;
+            elements.offlineIndicator.style.display = 'none';
+            updateStatus('Back online! Attempting to connect...', 'checking');
+            attemptConnection();
+        });
+        
+        window.addEventListener('offline', () => {
+            isOnline = false;
+            elements.offlineIndicator.style.display = 'block';
+            updateStatus('You are offline', 'error');
+            showManualOptions();
+        });
+        
+        // Einstellungen laden
+        function loadSettings() {
+            const saved = localStorage.getItem('plexWrapperSettings');
+            if (saved) {
+                try {
+                    const savedConfig = JSON.parse(saved);
+                    config = { ...DEFAULT_CONFIG, ...savedConfig };
+                } catch (e) {
+                    console.warn('Could not load saved settings:', e);
+                }
+            }
+            
+            // UI aktualisieren
+            elements.serverUrl.value = config.serverUrl;
+            elements.retryDelay.value = config.retryDelay;
+            elements.timeout.value = config.timeout;
+        }
+        
+        // Einstellungen speichern
+        function saveSettings() {
+            config.serverUrl = elements.serverUrl.value.trim();
+            config.retryDelay = parseInt(elements.retryDelay.value);
+            config.timeout = parseInt(elements.timeout.value);
+            
+            // Validierung
+            if (!isValidUrl(config.serverUrl)) {
+                updateStatus('Invalid server URL', 'error');
+                return;
+            }
+            
+            localStorage.setItem('plexWrapperSettings', JSON.stringify(config));
+            elements.settingsPanel.style.display = 'none';
+            
+            updateStatus('Settings saved! Connecting...', 'checking');
+            connectionAttempts = 0;
+            attemptConnection();
+        }
+        
+        // Einstellungen zurücksetzen
+        function resetSettings() {
+            config = { ...DEFAULT_CONFIG };
+            localStorage.removeItem('plexWrapperSettings');
+            loadSettings();
+            updateStatus('Settings reset to default', 'success');
+        }
+        
+        // URL Validierung
+        function isValidUrl(string) {
+            try {
+                const url = new URL(string);
+                return url.protocol === 'http:' || url.protocol === 'https:';
+            } catch (_) {
+                return false;
+            }
+        }
+        
+        // Server-Erreichbarkeit prüfen
+        async function checkServerReachability(url) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), config.timeout * 1000);
+            
+            try {
+                const response = await fetch(url + '/web/index.html', {
+                    method: 'HEAD',
+                    mode: 'no-cors',
+                    signal: controller.signal,
+                    cache: 'no-cache'
+                });
+                clearTimeout(timeoutId);
+                return true;
+            } catch (error) {
+                clearTimeout(timeoutId);
+                return false;
+            }
+        }
+        
+        // Status aktualisieren
+        function updateStatus(message, type = 'checking') {
+            elements.statusText.textContent = message;
+            elements.connectionStatus.className = `connection-status status-${type}`;
+            elements.connectionStatus.textContent = message;
+            elements.connectionStatus.style.display = 'block';
+        }
+        
+        // Zu Plex verbinden
+        async function connectToPlex() {
+            if (!isOnline) {
+                updateStatus('No internet connection', 'error');
+                return;
+            }
+            
+            updateStatus('Connecting to Plex server...', 'checking');
+            elements.spinner.style.display = 'block';
+            elements.mainButtons.style.display = 'none';
+            
+            try {
+                const isReachable = await checkServerReachability(config.serverUrl);
+                
+                if (isReachable || connectionAttempts === 0) {
+                    // Redirect zu Plex
+                    updateStatus('Server found! Redirecting...', 'success');
+                    
+                    setTimeout(() => {
+                        try {
+                            window.location.href = config.serverUrl;
+                        } catch (error) {
+                            showManualOptions();
+                        }
+                    }, 1000);
+                    
+                } else {
+                    throw new Error('Server not reachable');
+                }
+                
+            } catch (error) {
+                connectionAttempts++;
+                
+                if (connectionAttempts < config.maxRetries) {
+                    updateStatus(`Connection failed. Retrying... (${connectionAttempts}/${config.maxRetries})`, 'error');
+                    setTimeout(() => connectToPlex(), config.retryDelay * 1000);
+                } else {
+                    updateStatus('Could not connect to Plex server', 'error');
+                    showManualOptions();
+                }
+            }
+        }
+        
+        // Manuelle Optionen anzeigen
+        function showManualOptions() {
+            elements.spinner.style.display = 'none';
+            elements.mainButtons.style.display = 'flex';
+            elements.manual.style.display = 'block';
+            elements.manualLink.href = config.serverUrl;
+            
+            elements.mainButtons.classList.add('fade-in');
+            elements.manual.classList.add('fade-in');
+        }
+        
+        // Einstellungen Panel toggle
+        function toggleSettings() {
+            const panel = elements.settingsPanel;
+            panel.style.display = panel.style.display === 'none' || !panel.style.display ? 'block' : 'none';
+            
+            if (panel.style.display === 'block') {
+                panel.classList.add('fade-in');
+            }
+        }
+        
+        // Verbindungsversuch starten
+        function attemptConnection() {
+            if (!isValidUrl(config.serverUrl)) {
+                updateStatus('Please configure your server URL', 'error');
+                showManualOptions();
+                return;
+            }
+            
+            connectToPlex();
+        }
+        
+        // Initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSettings();
+            
+            // Offline-Status prüfen
+            if (!isOnline) {
+                elements.offlineIndicator.style.display = 'block';
+                updateStatus('You are offline', 'error');
+                showManualOptions();
+                return;
+            }
+            
+            // Automatische Verbindung nach kurzer Verzögerung
+            setTimeout(() => {
+                attemptConnection();
+            }, config.retryDelay * 1000);
+        });
+        
+        // Fallback für ältere Browser
+        window.onload = function() {
+            if (document.readyState === 'complete' && !document.querySelector('.fade-in')) {
+                loadSettings();
+                attemptConnection();
+            }
+        };
+    </script>
 </body>
 </html>
