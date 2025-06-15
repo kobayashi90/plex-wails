@@ -24,7 +24,7 @@ func (a *App) OnStartup(ctx context.Context) {
     a.ctx = ctx
 }
 
-// Diese Funktionen müssen exportiert sein (großer Anfangsbuchstabe!)
+// SetFullscreen setzt die Anwendung in den Vollbildmodus
 func (a *App) SetFullscreen(fullscreen bool) {
     if fullscreen {
         runtime.WindowFullscreen(a.ctx)
@@ -33,8 +33,18 @@ func (a *App) SetFullscreen(fullscreen bool) {
     }
 }
 
+// IsFullscreen überprüft, ob die Anwendung im Vollbildmodus ist
 func (a *App) IsFullscreen() bool {
     return runtime.WindowIsFullscreen(a.ctx)
+}
+
+// ToggleFullscreen wechselt zwischen Vollbild und Fenstermodus
+func (a *App) ToggleFullscreen() {
+    if runtime.WindowIsFullscreen(a.ctx) {
+        runtime.WindowUnfullscreen(a.ctx)
+    } else {
+        runtime.WindowFullscreen(a.ctx)
+    }
 }
 
 func main() {
