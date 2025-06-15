@@ -27,10 +27,9 @@ func main() {
     app := NewApp()
 
     err := wails.Run(&options.App{
-        Title:  "My Plex Server",
+        Title:  "Plex Desktop",
         Width:  1280,
         Height: 720,
-        URL:    "https://plex.amaterasu.network", // ← HIER ÄNDERN
         AssetServer: &assetserver.Options{
             Assets: assets,
         },
