@@ -14,36 +14,39 @@ var assets embed.FS
 
 type App struct {
     ctx context.Context
+    isFullscreen bool
 }
 
 func NewApp() *App {
-    return &App{}
+    return &App{
+        isFullscreen: false,
+    }
 }
 
 func (a *App) OnStartup(ctx context.Context) {
     a.ctx = ctx
 }
 
-// SetFullscreen setzt die Anwendung in den Vollbildmodus
 func (a *App) SetFullscreen(fullscreen bool) {
     if fullscreen {
         runtime.WindowFullscreen(a.ctx)
+        a.isFullscreen = true
     } else {
         runtime.WindowUnfullscreen(a.ctx)
+        a.isFullscreen = false
     }
 }
 
-// IsFullscreen überprüft, ob die Anwendung im Vollbildmodus ist
 func (a *App) IsFullscreen() bool {
-    return runtime.WindowIsFullscreen(a.ctx)
+    // Use internal state as runtime.WindowIsFullscreen might not be reliable
+    return a.isFullscreen
 }
 
-// ToggleFullscreen wechselt zwischen Vollbild und Fenstermodus
 func (a *App) ToggleFullscreen() {
-    if runtime.WindowIsFullscreen(a.ctx) {
-        runtime.WindowUnfullscreen(a.ctx)
+    if a.isFullscreen {
+        a.SetFullscreen(false)
     } else {
-        runtime.WindowFullscreen(a.ctx)
+        a.SetFullscreen(true)
     }
 }
 
@@ -58,6 +61,9 @@ func main() {
             Assets: assets,
         },
         OnStartup: app.OnStartup,
+        // Ensure the window can go fullscreen
+        DisableResize: false,
+        Fullscreen:    false,
     })
 
     if err != nil {
