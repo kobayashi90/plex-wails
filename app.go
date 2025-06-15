@@ -50,6 +50,31 @@ func (a *App) ToggleFullscreen() {
     }
 }
 
+// Minimize window
+func (a *App) MinimizeWindow() {
+    runtime.WindowMinimise(a.ctx)
+}
+
+// Close application
+func (a *App) CloseApplication() {
+    runtime.Quit(a.ctx)
+}
+
+// Restore window from minimized state
+func (a *App) RestoreWindow() {
+    runtime.WindowUnminimise(a.ctx)
+}
+
+// Hide window
+func (a *App) HideWindow() {
+    runtime.WindowHide(a.ctx)
+}
+
+// Show window
+func (a *App) ShowWindow() {
+    runtime.WindowShow(a.ctx)
+}
+
 func main() {
     app := NewApp()
 
